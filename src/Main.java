@@ -5,10 +5,19 @@ public class Main {
 	public static String path;
 	
 	public static void main(String[] args) {
-		maxWorkTime = Integer.parseInt("1000");
-		path =  "C:\\Users\\ustad\\Desktop\\color.txt";
+		if(args.length == 0) {
+			maxWorkTime = Integer.parseInt("1000");
+			path =  "C:\\Users\\ustad\\Desktop\\color.txt";
+		} else if(args.length == 2) {
+			path = args[0];
+			maxWorkTime = Integer.parseInt(args[1]);
+		} else {
+			System.out.println("Invalid arguments.");
+			
+			return;
+		}
 		
-		ATSPParser atspParser = new ATSPParser(path);
+		Parser atspParser = new Parser(path);
 		atspParser.print();
 		
 		Heuristic heuristic = new Heuristic(atspParser.getCostMatrix());
@@ -21,6 +30,6 @@ public class Main {
 		
 		BranchAndPrice bnp = new BranchAndPrice(atspParser.getCostMatrix().clone(), heuristic.getHeuristic().clone(), colorCount);
 		bnp.printWidthVert();
-		bnp.useSolver();
+		bnp.start();
 	}
 }

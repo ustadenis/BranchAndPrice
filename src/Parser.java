@@ -3,15 +3,13 @@ import java.io.FileReader;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class ATSPParser {
+public class Parser {
 	
 	private int mEdgeCount;
 	private int mVertCount;
 	private int[][] mCostMatrix;
 	
-	private int separator;
-	
-	public ATSPParser(String filename) {
+	public Parser(String filename) {
 		try (BufferedReader br = new BufferedReader(new FileReader(filename))) {
 			
 			String tmp = "1";

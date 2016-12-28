@@ -17,11 +17,12 @@ public class BranchAndPrice {
 	private int[][] mHeuristicVert;
 	private int[][] mVert;
 	private ArrayList<ArrayList<Integer>> mWidthVert;
-	double mPi[];
+	ArrayList<Float> mPi;
+	ArrayList<Integer> maxIndependentVerts;
 	
 	private CLP mModel;
 	private CLPVariable[] mCLPVar;
-	private CLPConstraint[] mClpConstraints;
+	private ArrayList<CLPConstraint> mClpConstraints;
 	
 	public BranchAndPrice(int[][] costMatrix, int[][] vert, int colorCount) {
 		mpCostMatrix = costMatrix;
@@ -39,15 +40,15 @@ public class BranchAndPrice {
 		{
 			for (int j = 0; j < mWidthVert.get(i).size(); j++)
 			{
-				System.out.print(mWidthVert.get(i).get(j) + 1 + "\t");
+				System.out.print(mWidthVert.get(i).get(j) + "\t");
 			}
 			System.out.println();
 		}
 	}
 	
-	public void useSolver() {
+	public void start() {
 		mCLPVar = new CLPVariable[mnColorCount];
-		mClpConstraints = new CLPConstraint[mHeuristicVert.length];
+		mClpConstraints = new ArrayList<>();
 		
 		for(int i = 0; i < mnColorCount; i++) {
 			mCLPVar[i] = mModel.addVariable().lb(0);
@@ -62,62 +63,111 @@ public class BranchAndPrice {
 				}
 			}
 			
-			mClpConstraints[i] = exp.geq(1);
+			mClpConstraints.add(exp.geq(1));
 		}
 		
 		mModel.printModel();
 		
+		double sumPi = runSolver();
+	}
+	
+	private double runSolver() {
 		HashMap<CLPVariable, Double> objFunc = new HashMap<CLPVariable, Double>();
 		for (CLPVariable var : mCLPVar) {
 			objFunc.put(var, 1.0);
 		}
-		int i = 0;
 		
-		mPi = new double[mHeuristicVert.length];
-		for (CLPConstraint constr : mClpConstraints) {
+		mPi = new ArrayList<>();
+		int i = 0;
+		for (CLPConstraint constraints : mClpConstraints) {
 			mModel.addObjective(objFunc, 0);
 			mModel.minimize();
-			double piStar = mModel.getDualSolution(constr);
-			mPi[i] = piStar;
-			System.out.print("i" + (i + 1) + " = "
-					+ piStar + "\t");
+			
+			float pi = (float) mModel.getDualSolution(constraints);
+			
+			mPi.add(pi);
+			System.out.print("i" + (i + 1) + " = " + pi + "\t");
+			i++;
 		}
 		System.out.println();
 		
-		double sumPi = getSumPiWithStar();
-		System.out.println("Sum pi with star: " + sumPi);
+		double sumPi = sumPi();
+		System.out.println("Sum pi: " + sumPi);
 		
-		if (sumPi > 1) {
-			runCliquer();
+		if (sumPi > 1){
+			//add new constraint to solver with edges from sumPi*
+			//run solver and get dual solutions.
+			//find sumPi again
+			
+			CLPExpression exp = mModel.createExpression();
+			
+			for(int k : maxIndependentVerts) {
+				for(int j = 0; j < mnColorCount; j++) {
+					if(mWidthVert.get(j).indexOf(k) >= 0) {
+						exp.add(mCLPVar[j]);
+					}
+				}
+			}
+			
+			mClpConstraints.add(exp.geq(1));
+			
+			runSolver();
+		} else {	  
+			int[] result = cliquer();
+			//sumPi <=1,run cliquer, get weight
+			//if (weight > 1) {
+			//get edges, add as constraint, run solver 
+			//else if (weight <=1 ){
+			//solver.getPrimalSolution() , returns you xi, color number 
+			//round this number to  up, if solution >= f* (euristic best) -> return 
+			//else (if xi is integer) -> FOUND SOLUTION HERE, return this value and get vertixes 
+			//else (xi not integer) {
+			//traverse tree. 1st branch - find two edges( i dont remember what exactly... mb read article?),
+			//merge them into one 
+			//2nd branch - connect those edges with path (?? i dont remember how REBRO is in english, bro) 
+			//run from the euristic part until better solution is found 
 		}
-		//if not good enough : traverse tree(); 
+		
+		return sumPi;
 	}
 	
-	private double getSumPiWithStar() {
-		double sumPiWithStar = 0;
-		ArrayList<Integer> maxIndependentSet = new ArrayList<>();
+	private double sumPi() {
+		double sumPi = 0;
 		
+		findMaxIndependentVerts();
+		
+		for (Integer vertex : maxIndependentVerts) {
+			sumPi += mPi.get(vertex);
+		}
+		return sumPi;
+	}
+	
+	private void findMaxIndependentVerts() {
+		maxIndependentVerts = new ArrayList<Integer>();
 		int index = 0;
-		int maxLength = 0;
-		for(int i = 0; i < mWidthVert.size(); i++) {
-			if(maxLength < mWidthVert.get(i).size()) {
-				maxLength = mWidthVert.get(i).size();
-				index = i;
+		int minDegree = Integer.MAX_VALUE;
+		int j = 0;
+		for(int[] i : mHeuristicVert) {
+			if(minDegree > i[Heuristic.VERT_DEGREE]) {
+				minDegree = i[Heuristic.VERT_DEGREE];
+				index = j;
+			}
+			j++;
+		}
+		maxIndependentVerts.add(mHeuristicVert[index][Heuristic.VERT_NUMBER]);
+		for(int i = 0; i < mpCostMatrix.length; i++) {
+			if(mpCostMatrix[i][mHeuristicVert[index][Heuristic.VERT_NUMBER]] > 0) {
+				maxIndependentVerts.add(i);
 			}
 		}
-		
-		for (Integer vertex : mWidthVert.get(index)) {
-			sumPiWithStar += mPi[vertex];
-		}
-		return sumPiWithStar;
 	}
 	
-	private void runCliquer() {
-		initInvertedAdjacencyMatrix();
-		invokeCliquer();
+	private int[] cliquer() {
+		initInvertedCostMatrix();
+		return invokeCliquer();
 	}
 
-	private void invokeCliquer() {
+	private int[] invokeCliquer() {
 		ArrayList<Edge> edges = new ArrayList<Edge>();
 		for (int i = 0; i < mHeuristicVert.length; i++) {
 			for (int j = i + 1; j < mHeuristicVert.length; j++) {
@@ -129,13 +179,15 @@ public class BranchAndPrice {
 		
 		float[] weights = new float[mHeuristicVert.length];
 		for (int i = 0; i < mHeuristicVert.length; i++) {
-			weights[i] = (float) mPi[i];
+			weights[i] = (float) mPi.get(i);
 		}
 		int[] clique = CliquerWrapper.getInstance().findClique(edges, weights);
         System.out.println(Arrays.toString(clique));
+        
+        return clique;
 	}
 	
-	private void initInvertedAdjacencyMatrix() {
+	private void initInvertedCostMatrix() {
 		mpInvertedCostMatrix = mpCostMatrix.clone();
 		for (int i = 0; i < mHeuristicVert.length; i++) {
 			for (int j = 0; j < mHeuristicVert.length; j++) {
@@ -151,7 +203,7 @@ public class BranchAndPrice {
 		}
 	}
 	
-	private void printVert() {
+	public void printVert() {
 		for (int i = 0; i < mHeuristicVert.length; i++)
 		{
 			for (int j = 0; j < mHeuristicVert[i].length; j++)
@@ -165,8 +217,6 @@ public class BranchAndPrice {
 					System.out.print(mHeuristicVert[i][j] + "\t");
 				}
 			}
-
-			System.out.println();
 		}
 	}
 	
